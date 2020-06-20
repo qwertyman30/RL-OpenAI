@@ -8,8 +8,9 @@ import numpy as np
 import os
 import gzip
 import time
+import torch
 import matplotlib.pyplot as plt
-from sklearn.utils import shuffle
+from sklearn.utils import shuffle, resample
 
 from utils import *
 from agent.bc_agent import BCAgent
@@ -38,6 +39,7 @@ def read_data(datasets_dir="./data", frac = 0.1):
 
 
 def preprocessing(X_train, y_train, X_valid, y_valid, history_length=1):
+    print("Preprocessing data")
 
     # TODO: preprocess your data here.
     # 1. convert the images in X_train/X_valid to gray scale. If you use rgb2gray() from utils.py, the output shape (96, 96, 1)
@@ -123,6 +125,7 @@ if __name__ == "__main__":
     X_train, y_train, X_valid, y_valid = preprocessing(X_train, y_train, X_valid, y_valid, history_length=3)
     
     # Upsampling
+    print("Upsampling")
     X_0 = X_train[y_train == 0]
     lenx0 = len(X_0)
     X_train = np.concatenate([
@@ -138,6 +141,7 @@ if __name__ == "__main__":
         np.ones(lenx0)*2,
         np.ones(lenx0)*3
     ])
+    print(len(X_train), len(X_valid))
     
     X_train, y_train = shuffle(X_train, y_train)
 
