@@ -8,6 +8,7 @@ import numpy as np
 import os
 import gzip
 import matplotlib.pyplot as plt
+from sklearn.utils import shuffle
 
 from utils import *
 from agent.bc_agent import BCAgent
@@ -46,33 +47,35 @@ def preprocessing(X_train, y_train, X_valid, y_valid, history_length=1):
     # At first you should only use the current image as input to your network to learn the next action. Then the input states
     # have shape (96, 96, 1). Later, add a history of the last N images to your state so that a state has shape (96, 96, N).    
     X_train = rgb2gray(X_train)
-    X_train = np.concatenate([np.zeros((1, 96, 96)), X_train])
+    X_train = np.concatenate([np.zeros((history_length, 96, 96)), X_train])
     X_train = np.array([X_train[i:i+history_length+1].T for i in range(len(X_train) - history_length)])
     
     X_valid = rgb2gray(X_valid)
-    X_valid = np.concatenate([np.zeros((1, 96, 96)), X_valid])
+    X_valid = np.concatenate([np.zeros((history_length, 96, 96)), X_valid])
     X_valid = np.array([X_valid[i:i+history_length+1].T for i in range(len(X_valid) - history_length)])
     
     y_train = np.array([action_to_id(y) for y in y_train])
     y_valid = np.array([action_to_id(y) for y in y_valid])
     return X_train, y_train, X_valid, y_valid
 
-def train_model(X_train, y_train, X_valid, epochs, batch_size, lr, model_dir="./models", tensorboard_dir="./tensorboard"):
-    # create result and model folders
+def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, history_length=1, model_dir="./models", tensorboard_dir="./tensorboard"):
+    
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)  
  
     print("... train model")
 
-    agent = BCAgent(lr=lr, history_length=1)
+    agent = BCAgent(lr=lr, history_length=3)
     tensorboard_eval = Evaluation(tensorboard_dir)
-    X_train, y_train = shuffle(X_train, y_train)
 
     t_losses, t_accs, v_accs = [], [], []
     batches = int(len(X_train) / batch_size)
     val_batch_size = int(len(y_valid) / batches)
     
+    best_val_acc = 0
+    
     for i in range(epochs):
+        start = time.time()
         train_corr, val_corr = 0, 0
         for j in range(batches):
             X_batch_tr = X_train[j * batch_size:(j+1) * batch_size]
@@ -84,7 +87,6 @@ def train_model(X_train, y_train, X_valid, epochs, batch_size, lr, model_dir="./
             X_batch_va = X_batch_va.view((-1, 1+history_length, 96, 96))
 
             t_loss, train_preds = agent.update(X_batch_tr, y_batch_tr)
-            t_losses.append(t_loss)
             train_preds = torch.max(train_preds.data, 1)[1]
             train_corr += sum(train_preds.cpu().numpy() == y_batch_tr)
             with torch.no_grad():
@@ -95,17 +97,21 @@ def train_model(X_train, y_train, X_valid, epochs, batch_size, lr, model_dir="./
 
         train_acc = 100. * train_corr / len(X_train)
         val_acc = 100. * val_corr / len(X_valid)
+        if best_val_acc < val_acc:
+            print(f'Saving model at epoch {i}')
+            agent.save(f'agent_40k_epoch{i}.pt')
+            best_val_acc = val_acc
+        
+        t_losses.append(t_loss)
         t_accs.append(train_acc)
         v_accs.append(val_acc)
+        
         if i % 10 == 0:
             print(f"Epoch: {i+1}\tTrain Loss: {t_loss:.3f}\tTrain Accuracy:{train_acc:.3f}\tValidation accuracy:{val_acc:.3f}")
             tensorboard_eval.write_episode(i, { "Train Accuracy": train_acc, "Validation Accuracy": valid_acc })
-
-    # TODO: save your agent
-    model_dir = agent.save(os.path.join(model_dir, "agent.pt"))
-    print("Model saved in file: %s" % model_dir)
-    return t_losses, t_accs, v_accs      
-
+        end = time.time()
+        print(f'Epoch {i+1} Time: {end - start}s')
+    return t_losses, t_accs, v_accs
 
 if __name__ == "__main__":
 
@@ -113,7 +119,23 @@ if __name__ == "__main__":
     X_train, y_train, X_valid, y_valid = read_data("./data")
 
     # preprocess data
-    X_train, y_train, X_valid, y_valid = preprocessing(X_train, y_train, X_valid, y_valid, history_length=1)
+    X_train, y_train, X_valid, y_valid = preprocessing(X_train, y_train, X_valid, y_valid, history_length=3)
 
     # train model (you can change the parameters!)
-    train_model(X_train, y_train, X_valid, epochs=100, batch_size=288, lr=0.001)
+    losses, t_accs, v_accs = train_model(X_train, y_train, X_valid, y_valid, history_length=3, epochs=40, batch_size=288, lr=0.001)
+    
+    plt.plot(losses)
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training loss vs epochs')
+    plt.savefig('Training loss vs epochs.png')
+    plt.show()
+
+    plt.plot(t_accs, label='Training')
+    plt.plot(v_accs, label='Validation')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy vs epochs')
+    plt.legend()
+    plt.savefig('Accuracy vs epochs.png')
+    plt.show()
