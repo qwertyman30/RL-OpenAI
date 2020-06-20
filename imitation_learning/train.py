@@ -7,6 +7,7 @@ import pickle
 import numpy as np
 import os
 import gzip
+import time
 import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
 
@@ -120,6 +121,25 @@ if __name__ == "__main__":
 
     # preprocess data
     X_train, y_train, X_valid, y_valid = preprocessing(X_train, y_train, X_valid, y_valid, history_length=3)
+    
+    # Upsampling
+    X_0 = X_train[y_train == 0]
+    lenx0 = len(X_0)
+    X_train = np.concatenate([
+        X_0,
+        resample(X_train[y_train==1], replace=True, n_samples=lenx0),
+        resample(X_train[y_train==2], replace=True, n_samples=lenx0),
+        resample(X_train[y_train==3], replace=True, n_samples=lenx0)
+    ])
+
+    y_train = np.concatenate([
+        np.zeros((lenx0)),
+        np.ones(lenx0),
+        np.ones(lenx0)*2,
+        np.ones(lenx0)*3
+    ])
+    
+    X_train, y_train = shuffle(X_train, y_train)
 
     # train model (you can change the parameters!)
     losses, t_accs, v_accs = train_model(X_train, y_train, X_valid, y_valid, history_length=3, epochs=40, batch_size=288, lr=0.001)
