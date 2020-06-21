@@ -44,7 +44,7 @@ def id_to_action(action_id, max_speed=0.8):
     elif action_id == BRAKE:
         return np.array([0.0, 0.0, 0.1])
     else:
-        return np.array([0.0, 0.0, 0.0])
+        return np.array([0.0, max_speed/10, 0.0])
     
 
 class EpisodeStats:

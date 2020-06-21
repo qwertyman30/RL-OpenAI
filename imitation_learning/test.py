@@ -44,8 +44,11 @@ def run_episode(env, agent, rendering=True, max_timesteps=1000, history_length=1
         state = torch.Tensor(state).cuda()
         state = state.view((-1, 1+history_length, 96, 96))
         a = agent.predict(state)
+        print(a)
         a = torch.max(a.data, 1)[1]
+        print(a)
         a = id_to_action(a)
+        print(a)
 
         next_state, r, done, info = env.step(a)
         episode_reward += r
@@ -67,14 +70,15 @@ if __name__ == "__main__":
     n_test_episodes = 15                  # number of episodes to test
 
     # TODO: load agent
-    agent = BCAgent(lr=0.001, history_length=1)
-    agent.load("models\\agent_40k_h1.pt")
+    agent = BCAgent(lr=0.001, history_length=3)
+    agent.load("models\\best_agent.pt")
+    agent.net.eval()
 
     env = gym.make('CarRacing-v0').unwrapped
 
     episode_rewards = []
     for i in range(n_test_episodes):
-        episode_reward = run_episode(env, agent, rendering=rendering, history_length=1)
+        episode_reward = run_episode(env, agent, rendering=rendering, history_length=3)
         episode_rewards.append(episode_reward)
 
     # save results in a dictionary and write them into a .json file

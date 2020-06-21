@@ -31,15 +31,10 @@ def read_data(datasets_dir="./data", frac = 0.1):
     X = np.array(data["state"]).astype('float32')
     y = np.array(data["action"]).astype('float32')
 
-    # split data into training and validation set
-    n_samples = len(data["state"])
-    X_train, y_train = X[:int((1-frac) * n_samples)], y[:int((1-frac) * n_samples)]
-    X_valid, y_valid = X[int((1-frac) * n_samples):], y[int((1-frac) * n_samples):]
-    return X_train, y_train, X_valid, y_valid
+    return X, y
 
-
-def preprocessing(X_train, y_train, X_valid, y_valid, history_length=1):
-    print("Preprocessing data")
+def preprocessing(X, y, history_length=1):
+    print('Preprocessing data')
 
     # TODO: preprocess your data here.
     # 1. convert the images in X_train/X_valid to gray scale. If you use rgb2gray() from utils.py, the output shape (96, 96, 1)
@@ -49,16 +44,17 @@ def preprocessing(X_train, y_train, X_valid, y_valid, history_length=1):
     # History:
     # At first you should only use the current image as input to your network to learn the next action. Then the input states
     # have shape (96, 96, 1). Later, add a history of the last N images to your state so that a state has shape (96, 96, N).    
-    X_train = rgb2gray(X_train)
-    X_train = np.concatenate([np.zeros((history_length, 96, 96)), X_train])
-    X_train = np.array([X_train[i:i+history_length+1].T for i in range(len(X_train) - history_length)])
+    X = rgb2gray(X)
+    X = np.concatenate([np.zeros((history_length, 96, 96)), X])
+    X = np.array([X[i:i+history_length+1].T for i in range(len(X) - history_length)])
     
-    X_valid = rgb2gray(X_valid)
-    X_valid = np.concatenate([np.zeros((history_length, 96, 96)), X_valid])
-    X_valid = np.array([X_valid[i:i+history_length+1].T for i in range(len(X_valid) - history_length)])
-    
-    y_train = np.array([action_to_id(y) for y in y_train])
-    y_valid = np.array([action_to_id(y) for y in y_valid])
+    y = np.array([action_to_id(label) for label in y])
+    return X, y
+
+def train_val_split(X, y, frac=0.1):
+    n_samples = len(X)
+    X_train, y_train = X[:int((1-frac) * n_samples)], y[:int((1-frac) * n_samples)]
+    X_valid, y_valid = X[int((1-frac) * n_samples):], y[int((1-frac) * n_samples):]
     return X_train, y_train, X_valid, y_valid
 
 def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, history_length=1, model_dir="./models", tensorboard_dir="./tensorboard"):
@@ -68,11 +64,11 @@ def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, hist
  
     print("... train model")
 
-    agent = BCAgent(lr=lr, history_length=3)
+    agent = BCAgent(lr=lr, history_length=history_length)
     tensorboard_eval = Evaluation(tensorboard_dir)
 
     t_losses, t_accs, v_accs = [], [], []
-    batches = int(len(X_train) / batch_size)
+    train_batch_size = int(len(X_train) / batches)
     val_batch_size = int(len(y_valid) / batches)
     
     best_val_acc = 0
@@ -81,8 +77,8 @@ def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, hist
         start = time.time()
         train_corr, val_corr = 0, 0
         for j in range(batches):
-            X_batch_tr = X_train[j * batch_size:(j+1) * batch_size]
-            y_batch_tr = y_train[j * batch_size:(j+1) * batch_size]
+            X_batch_tr = X_train[j * train_batch_size:(j+1) * train_batch_size]
+            y_batch_tr = y_train[j * train_batch_size:(j+1) * train_batch_size]
 
             X_batch_va = X_valid[j * val_batch_size:(j+1) * val_batch_size]
             y_batch_va = y_valid[j * val_batch_size:(j+1) * val_batch_size]
@@ -101,8 +97,8 @@ def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, hist
         train_acc = 100. * train_corr / len(X_train)
         val_acc = 100. * val_corr / len(X_valid)
         if best_val_acc < val_acc:
-            print(f'Saving model at epoch {i}')
-            agent.save(f'agent_40k_epoch{i}.pt')
+            print(f'Saving model at epoch {i+1}')
+            agent.save(f'agent1_15k_epoch{i+1}_{batches}.pt')
             best_val_acc = val_acc
         
         t_losses.append(t_loss)
@@ -116,37 +112,44 @@ def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, hist
         print(f'Epoch {i+1} Time: {end - start}s')
     return t_losses, t_accs, v_accs
 
+
 if __name__ == "__main__":
 
-    # read data    
-    X_train, y_train, X_valid, y_valid = read_data("./data")
+    # read data
+    X, y = read_data("./data")
 
     # preprocess data
-    X_train, y_train, X_valid, y_valid = preprocessing(X_train, y_train, X_valid, y_valid, history_length=3)
-    
-    # Upsampling
-    print("Upsampling")
-    X_0 = X_train[y_train == 0]
+    X, y = preprocessing(X, y, history_length=3)
+
+    print("Upsample data")
+    X_0 = X[y == 0]
     lenx0 = len(X_0)
-    X_train = np.concatenate([
+
+    X = np.concatenate([
         X_0,
-        resample(X_train[y_train==1], replace=True, n_samples=lenx0),
-        resample(X_train[y_train==2], replace=True, n_samples=lenx0),
-        resample(X_train[y_train==3], replace=True, n_samples=lenx0)
+        resample(X[y == 1], replace=True, n_samples=lenx0),
+        resample(X[y == 2], replace=True, n_samples=lenx0),
+        resample(X[y == 3], replace=True, n_samples=lenx0)
     ])
 
-    y_train = np.concatenate([
+    y = np.concatenate([
         np.zeros((lenx0)),
         np.ones(lenx0),
         np.ones(lenx0)*2,
         np.ones(lenx0)*3
     ])
-    print(len(X_train), len(X_valid))
-    
-    X_train, y_train = shuffle(X_train, y_train)
+
+    print("Shuffle data")
+    X, y = shuffle(X, y)
+
+    print("Train val split")
+    X_train, y_train, X_valid, y_valid = train_val_split(X, y)
+
+    del X
+    del y
 
     # train model (you can change the parameters!)
-    losses, t_accs, v_accs = train_model(X_train, y_train, X_valid, y_valid, history_length=3, epochs=40, batch_size=288, lr=0.001)
+    losses, t_accs, v_accs = train_model(X_train, y_train, X_valid, y_valid, history_length=3, epochs=40, batches=200, lr=0.001)
     
     plt.plot(losses)
     plt.xlabel('Epochs')
