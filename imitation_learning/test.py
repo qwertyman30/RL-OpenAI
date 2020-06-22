@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     # TODO: load agent
     agent = BCAgent(lr=0.001, history_length=3)
-    agent.load("models\\agent1_15k_epoch94_50.pt")
+    agent.load("models\\agent1_15k_epoch79_50_no_upsampling.pt")
     agent.net.eval()
 
     env = gym.make('CarRacing-v0').unwrapped

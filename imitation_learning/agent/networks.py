@@ -33,6 +33,7 @@ class CNN(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, p=0.2)
         x = F.relu(self.fc2(x))
+        x = F.dropout(x, p=0.2)
         x = F.relu(self.fc3(x))
         x = self.batch_norm(x)
         x = F.relu(self.fc4(x))
