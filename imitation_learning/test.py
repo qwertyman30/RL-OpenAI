@@ -15,10 +15,30 @@ from utils import *
 
 def preprocessing_state(state, history_length=1):
     state = rgb2gray(state).reshape(-1, 96, 96)
-    state = np.concatenate([np.zeros((history_length, 96, 96)), state])
-    state = np.array([state[i:i+history_length+1].T for i in range(len(state) - history_length)])
-
+    if history_length != 0:
+        state = np.concatenate([ [state[0] for i in range(history_length)], state ])
+        state = np.array([state[i:i+history_length+1].T for i in range(len(state) - history_length)])
+    
     return state
+
+def id_to_action(action_id, max_speed=0.8):
+    """ 
+    this method makes actions continous.
+    Important: this method only works if you recorded data pressing only one key at a time!
+    """
+    a = np.array([0.0, 0.0, 0.0])
+
+    if action_id == LEFT:
+        return np.array([-1.0, 0,0, 0.05])
+    elif action_id == RIGHT:
+        return np.array([1.0, 0,0, 0.05])
+    elif action_id == ACCELERATE:
+        return np.array([0.0, max_speed, 0.0])
+    elif action_id == BRAKE:
+        return np.array([0.0, 0.0, 0.1])
+    else:
+        return np.array([0.0, 0.0, 0.0])
+
 
 def run_episode(env, agent, rendering=True, max_timesteps=1000, history_length=1):
     
@@ -30,7 +50,7 @@ def run_episode(env, agent, rendering=True, max_timesteps=1000, history_length=1
     env.viewer.window.dispatch_events()
 
     while True:
-        
+
         state = preprocessing_state(state, history_length=history_length)
 
         # TODO: get the action from your agent! You need to transform the discretized actions to continuous
@@ -44,11 +64,9 @@ def run_episode(env, agent, rendering=True, max_timesteps=1000, history_length=1
         state = torch.Tensor(state).cuda()
         state = state.view((-1, 1+history_length, 96, 96))
         a = agent.predict(state)
-        print(a)
+        #a = torch.nn.functional.softmax(a, dim=1)
         a = torch.max(a.data, 1)[1]
-        print(a)
         a = id_to_action(a)
-        print(a)
 
         next_state, r, done, info = env.step(a)
         episode_reward += r
@@ -71,13 +89,14 @@ if __name__ == "__main__":
 
     # TODO: load agent
     agent = BCAgent(lr=0.001, history_length=3)
-    agent.load("models\\best_agent.pt")
+    agent.load("models\\agent1_15k_epoch94_50.pt")
     agent.net.eval()
 
     env = gym.make('CarRacing-v0').unwrapped
 
     episode_rewards = []
     for i in range(n_test_episodes):
+        print(i)
         episode_reward = run_episode(env, agent, rendering=rendering, history_length=3)
         episode_rewards.append(episode_reward)
 

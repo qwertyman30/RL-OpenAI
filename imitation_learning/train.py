@@ -67,15 +67,15 @@ def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, hist
     agent = BCAgent(lr=lr, history_length=history_length)
     tensorboard_eval = Evaluation(tensorboard_dir)
 
-    t_losses, t_accs, v_accs = [], [], []
+    t_losses, t_f1_scores, v_f1_scores = [], [], []
     train_batch_size = int(len(X_train) / batches)
     val_batch_size = int(len(y_valid) / batches)
     
-    best_val_acc = 0
+    best_f1_score = 0
     
     for i in range(epochs):
         start = time.time()
-        train_corr, val_corr = 0, 0
+        all_train_preds, all_val_preds = [], []
         for j in range(batches):
             X_batch_tr = X_train[j * train_batch_size:(j+1) * train_batch_size]
             y_batch_tr = y_train[j * train_batch_size:(j+1) * train_batch_size]
@@ -87,56 +87,77 @@ def train_model(X_train, y_train, X_valid, y_valid, epochs, batch_size, lr, hist
 
             t_loss, train_preds = agent.update(X_batch_tr, y_batch_tr)
             train_preds = torch.max(train_preds.data, 1)[1]
-            train_corr += sum(train_preds.cpu().numpy() == y_batch_tr)
+            all_train_preds = np.concatenate([all_train_preds, train_preds.cpu().numpy()])
             with torch.no_grad():
                 val_preds = agent.predict(X_batch_va)
                 val_preds = torch.max(val_preds.data, 1)[1]
-                val_corr += sum(val_preds.cpu().numpy() == y_batch_va)
+                all_val_preds = np.concatenate([all_val_preds, val_preds.cpu().numpy()])
             torch.cuda.empty_cache()
 
-        train_acc = 100. * train_corr / len(X_train)
-        val_acc = 100. * val_corr / len(X_valid)
-        if best_val_acc < val_acc:
+        if (j+1)*train_batch_size < len(X_train):
+            X_batch_tr = X_train[(j+1) * train_batch_size:]
+            y_batch_tr = y_train[(j+1) * train_batch_size:]
+
+            X_batch_va = X_valid[(j+1) * val_batch_size:]
+            y_batch_va = y_valid[(j+1) * val_batch_size:]
+            X_batch_va = torch.Tensor(X_batch_va).cuda()
+            X_batch_va = X_batch_va.view((-1, 1+history_length, 96, 96))
+
+            t_loss, train_preds = agent.update(X_batch_tr, y_batch_tr)
+            train_preds = torch.max(train_preds.data, 1)[1]
+            all_train_preds = np.concatenate([all_train_preds, train_preds.cpu().numpy()])
+            with torch.no_grad():
+                val_preds = agent.predict(X_batch_va)
+                val_preds = torch.max(val_preds.data, 1)[1]
+                all_val_preds = np.concatenate([all_val_preds, val_preds.cpu().numpy()])
+
+        train_f1_score = f1_score(all_train_preds, y_train, average='weighted')
+        val_f1_score = f1_score(all_val_preds, y_valid, average='weighted')
+        if best_f1_score < val_f1_score:
             print(f'Saving model at epoch {i+1}')
             agent.save(f'agent1_15k_epoch{i+1}_{batches}.pt')
-            best_val_acc = val_acc
-        
+            best_f1_score = val_f1_score
+
         t_losses.append(t_loss)
-        t_accs.append(train_acc)
-        v_accs.append(val_acc)
-        
+        t_f1_scores.append(train_f1_score)
+        v_f1_scores.append(val_f1_score)
+
         if i % 10 == 0:
-            print(f"Epoch: {i+1}\tTrain Loss: {t_loss:.3f}\tTrain Accuracy:{train_acc:.3f}\tValidation accuracy:{val_acc:.3f}")
+            print(f"Epoch: {i+1}\tTrain Loss: {t_loss:.3f}\tTrain f1_score:{train_f1_score:.3f}\tValidation f1_score:{val_f1_score:.3f}")
             tensorboard_eval.write_episode(i, { "Train Accuracy": train_acc, "Validation Accuracy": valid_acc })
         end = time.time()
         print(f'Epoch {i+1} Time: {end - start}s')
-    return t_losses, t_accs, v_accs
+    return t_losses, t_f1_scores, v_f1_scores
 
 
 if __name__ == "__main__":
-
     # read data
-    X, y = read_data("./data")
+    X, y = read_data(".\data")
 
     # preprocess data
     X, y = preprocessing(X, y, history_length=3)
-
-    print("Upsample data")
+    
+    print("Upsampling data")
     X_0 = X[y == 0]
-    lenx0 = len(X_0)
+    X_1 = X[y == 1]
+    X_2 = X[y == 2]
+    X_3 = X[y == 3]
+    X_4 = X[y == 4]
 
     X = np.concatenate([
         X_0,
-        resample(X[y == 1], replace=True, n_samples=lenx0),
-        resample(X[y == 2], replace=True, n_samples=lenx0),
-        resample(X[y == 3], replace=True, n_samples=lenx0)
+        resample(X_1, replace=True, n_samples=len(X_1)*2),
+        resample(X_2, replace=True, n_samples=len(X_2)*3),
+        resample(X_3, replace=True, n_samples=len(X_3)*2),
+        resample(X_4, replace=True, n_samples=len(X_4)*6)
     ])
 
     y = np.concatenate([
-        np.zeros((lenx0)),
-        np.ones(lenx0),
-        np.ones(lenx0)*2,
-        np.ones(lenx0)*3
+        np.zeros((len(X_0))),
+        np.ones((len(X_1)*2)),
+        np.ones(len(X_2)*3)*2,
+        np.ones(len(X_3)*2)*3,
+        np.ones(len(X_4)*6)*4
     ])
 
     print("Shuffle data")
@@ -145,12 +166,18 @@ if __name__ == "__main__":
     print("Train val split")
     X_train, y_train, X_valid, y_valid = train_val_split(X, y)
 
+    # Lack of ram. so delete unnecessary variables
     del X
     del y
+    del X_0
+    del X_1
+    del X_2
+    del X_3
+    del X_4
 
     # train model (you can change the parameters!)
-    losses, t_accs, v_accs = train_model(X_train, y_train, X_valid, y_valid, history_length=3, epochs=40, batches=200, lr=0.001)
-    
+    losses, t_f1_scores, v_f1_scores = train_model(X_train, y_train, X_valid, y_valid, history_length=3, epochs=100, batches=50, lr=0.001)
+
     plt.plot(losses)
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
@@ -158,11 +185,11 @@ if __name__ == "__main__":
     plt.savefig('Training loss vs epochs.png')
     plt.show()
 
-    plt.plot(t_accs, label='Training')
-    plt.plot(v_accs, label='Validation')
+    plt.plot(t_f1_scores, label='Training')
+    plt.plot(v_f1_scores, label='Validation')
     plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.title('Accuracy vs epochs')
+    plt.ylabel('F1 Score')
+    plt.title('F1 Score vs epochs')
     plt.legend()
-    plt.savefig('Accuracy vs epochs.png')
+    plt.savefig('F1 Score vs epochs.png')
     plt.show()

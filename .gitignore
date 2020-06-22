@@ -3,3 +3,5 @@
 *.pt
 *.png
 *.pdf
+*.gzip
+*.json

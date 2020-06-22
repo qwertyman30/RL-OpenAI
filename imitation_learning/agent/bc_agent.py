@@ -6,7 +6,7 @@ class BCAgent:
     def __init__(self, lr=1e-4, history_length=1):
         # TODO: Define network, loss function, optimizer
         # self.net = CNN(...)
-        self.net = CNN(history_length=history_length, n_classes=4).cuda()
+        self.net = CNN(history_length=history_length, n_classes=5).cuda()
         self.history_length = history_length
         self.criterion = nn.CrossEntropyLoss().cuda()
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
