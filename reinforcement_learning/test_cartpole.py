@@ -21,7 +21,7 @@ if __name__ == "__main__":
     Q = MLP(state_dim, num_actions)
     Q_target = MLP(state_dim, num_actions)
     agent = DQNAgent(Q, Q_target, num_actions)
-    agent.load("C:\\Users\\Monish\\Desktop\\workspace\\exercise3_R\\reinforcement_learning\\models_cartpole\\dqn_agent_149.pt")
+    agent.load("C:\\Users\\Monish\\Desktop\\workspace\\exercise3_R\\reinforcement_learning\\models_cartpole\\dqn_agent_199.pt")
  
     n_test_episodes = 15
 
