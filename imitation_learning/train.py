@@ -45,8 +45,9 @@ def preprocessing(X, y, history_length=1):
     # At first you should only use the current image as input to your network to learn the next action. Then the input states
     # have shape (96, 96, 1). Later, add a history of the last N images to your state so that a state has shape (96, 96, N).    
     X = rgb2gray(X)
-    X = np.concatenate([np.zeros((history_length, 96, 96)), X])
-    X = np.array([X[i:i+history_length+1].T for i in range(len(X) - history_length)])
+    if history_length != 0:
+        X = np.concatenate([ [X[0] for i in range(history_length)], X ])
+        X = np.array([X[i:i+history_length+1].T for i in range(len(X) - history_length)])
     
     y = np.array([action_to_id(label) for label in y])
     return X, y

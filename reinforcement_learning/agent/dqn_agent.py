@@ -141,7 +141,7 @@ class DQNAgent:
         self.Q_target.load_state_dict(torch.load(file_name))
         
         
-class DQNAgentCar:
+class DQNAgentCar(DQNAgent):
 
     def __init__(self, Q, Q_target, num_actions, gamma=0.95, batch_size=64, epsilon=0.1, tau=0.01, lr=1e-4, history_length=0):
         """
@@ -172,7 +172,7 @@ class DQNAgentCar:
         self.tau = tau
         self.epsilon = epsilon
 
-        self.loss_function = torch.nn.MSELoss().cuda()
+        self.loss_function = torch.nn.SmoothL1Loss().cuda()
         self.optimizer = torch.optim.Adam(self.Q.parameters(), lr=lr)
 
         self.num_actions = num_actions
@@ -197,7 +197,7 @@ class DQNAgentCar:
                 td_target[actions[i]] = rewards[i]
             else:
                 td_target_next = self.predict_Q_target(next_states[i])
-                td_target[actions[i]] = reward + self.gamma * torch.max(td_target_next).item()
+                td_target[actions[i]] = rewards[i] + self.gamma * torch.max(td_target_next).item()
 
             td_targets.append(td_target)
 
@@ -205,8 +205,8 @@ class DQNAgentCar:
         td_targets = np.vstack(td_targets)
         td_targets = torch.Tensor(td_targets).cuda()
         states = np.squeeze(states, axis=1)
-        y_pred = self.predict_Q(states)
-        loss = self.loss_function(y_pred, td_targets)
+        y_preds = self.predict_Q(states)
+        loss = self.loss_function(y_preds, td_targets)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -221,27 +221,11 @@ class DQNAgentCar:
         Returns:
             action id
         """
-        if deterministic:
-            self.Q.eval()
         r = np.random.uniform()
         if deterministic or r > self.epsilon:
             state = torch.Tensor(state).cuda()
             q_values = self.Q(state)
             action_id = torch.argmax(q_values).item()
         else:
-            action_id = np.random.choice(np.arange(0, self.num_actions), p=[0.5, 0.15, 0.15, 0.15, 0.05])
-        self.Q.train()
+            action_id = np.random.choice(np.arange(0, self.num_actions), p=[0.54, 0.17, 0.08, 0.2, 0.01])
         return action_id
-
-    def predict_Q_target(self, state):
-        return self.Q_target(torch.Tensor(state).cuda())
-    
-    def predict_Q(self, state):
-        return self.Q(torch.Tensor(state).cuda())
-
-    def save(self, file_name):
-        torch.save(self.Q.state_dict(), file_name)
-
-    def load(self, file_name):
-        self.Q.load_state_dict(torch.load(file_name))
-        self.Q_target.load_state_dict(torch.load(file_name))

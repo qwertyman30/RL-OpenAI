@@ -27,9 +27,10 @@ class CNN(nn.Module):
         # TODO : define layers of a convolutional neural network
         self.conv1 = nn.Conv2d(1+history_length, 32, 8)
         self.conv2 = nn.Conv2d(32, 64, 5)
-        self.conv3 = nn.Conv2d(64, 4, 3)
-        self.fc1 = nn.Linear(324, 64)
-        self.fc2 = nn.Linear(64, n_classes)
+        self.conv3 = nn.Conv2d(64, 16, 3)
+        self.fc1 = nn.Linear(1296, 324)
+        self.fc2 = nn.Linear(324, 64)
+        self.fc3 = nn.Linear(64, n_classes)
 
     def forward(self, x):
         # TODO: compute forward pass
@@ -48,4 +49,6 @@ class CNN(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, p=0.2)
         x = F.relu(self.fc2(x))
-        return x
+        x = F.dropout(x, p=0.2)
+        x = F.relu(self.fc3(x))
+        return F.log_softmax(x, dim=1)
