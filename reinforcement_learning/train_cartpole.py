@@ -87,7 +87,7 @@ def train_online(env, agent, num_episodes, eval_cycle, num_eval_episodes, model_
 if __name__ == "__main__":
 
     num_eval_episodes = 5   # evaluate on 5 episodes
-    eval_cycle = 20         # evaluate every 10 episodes
+    eval_cycle = 10         # evaluate every 10 episodes
 
     # You find information about cartpole in 
     # https://github.com/openai/gym/wiki/CartPole-v0
@@ -105,5 +105,5 @@ if __name__ == "__main__":
     
     Q = MLP(state_dim, num_actions)
     Q_target = MLP(state_dim, num_actions)
-    agent = DQNAgent(Q, Q_target, num_actions, gamma=0.9, batch_size=20, epsilon=0.1, tau=0.01, lr=0.001, history_length=0)
+    agent = DQNAgent(Q, Q_target, num_actions, gamma=0.9, batch_size=32, epsilon=0.1, tau=0.01, lr=0.001, history_length=0)
     training, validation = train_online(env, agent, 200, eval_cycle, num_eval_episodes)
