@@ -1,6 +1,8 @@
-import tensorflow as tf
+#import tensorflow as tf
 import numpy as np
-from dqn.replay_buffer import ReplayBuffer
+from collections import namedtuple
+import torch
+from replay_buffer import ReplayBuffer
 
 def soft_update(target, source, tau):
   for target_param, param in zip(target.parameters(), source.parameters()):
@@ -29,34 +31,53 @@ class DQNAgent:
         self.Q_target.load_state_dict(self.Q.state_dict())
 
         # define replay buffer
-        self.replay_buffer = ReplayBuffer(history_length)
-        
+        self.replay_buffer = ReplayBuffer()
+
         # parameters
         self.batch_size = batch_size
         self.gamma = gamma
         self.tau = tau
         self.epsilon = epsilon
 
-        self.loss_function = torch.nn.MSELoss()
-        self.optimizer = optim.Adam(self.Q.parameters(), lr=lr)
+        self.loss_function = torch.nn.MSELoss().cuda()
+        self.optimizer = torch.optim.Adam(self.Q.parameters(), lr=lr)
 
         self.num_actions = num_actions
-
 
     def train(self, state, action, next_state, reward, terminal):
         """
         This method stores a transition to the replay buffer and updates the Q networks.
         """
+        self.replay_buffer.add_transition(state, action, next_state, reward, terminal)
 
-        # TODO:
-        # 1. add current transition to replay buffer
-        # 2. sample next batch and perform batch update: 
-        #       2.1 compute td targets and loss 
-        #              td_target =  reward + discount * max_a Q_target(next_state_batch, a)
-        #       2.2 update the Q network
-        #       2.3 call soft update for target network
-        #           soft_update(self.Q_target, self.Q, self.tau)
-   
+        replay_size = len(self.replay_buffer._data.states)
+        
+        if replay_size < self.batch_size:
+            return
+
+        states, actions, next_states, rewards, terminals = self.replay_buffer.next_batch(self.batch_size)
+        td_targets = []
+
+        for i in range(self.batch_size):
+            td_target = self.predict_Q(states[i])
+            if terminals[i]:
+                td_target[actions[i]] = rewards[i]
+            else:
+                td_target_next = self.predict_Q_target(next_states[i])
+                td_target[actions[i]] = reward + self.gamma * torch.max(td_target_next).item()
+
+            td_targets.append(td_target)
+
+        td_targets = [t.detach().cpu().numpy() for t in td_targets]
+        td_targets = np.vstack(td_targets)
+        td_targets = torch.Tensor(td_targets).cuda()
+
+        y_pred = self.predict_Q(states)
+        loss = self.loss_function(y_pred, td_targets)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        soft_update(self.Q_target, self.Q, self.tau)
 
     def act(self, state, deterministic):
         """
@@ -69,17 +90,18 @@ class DQNAgent:
         """
         r = np.random.uniform()
         if deterministic or r > self.epsilon:
-            # TODO: take greedy action (argmax)
-            # action_id = ...
+            state = torch.Tensor(state).cuda()
+            q_values = self.Q(state)
+            action_id = torch.argmax(q_values).item()
         else:
-
-            # TODO: sample random action
-            # Hint for the exploration in CarRacing: sampling the action from a uniform distribution will probably not work. 
-            # You can sample the agents actions with different probabilities (need to sum up to 1) so that the agent will prefer to accelerate or going straight.
-            # To see how the agent explores, turn the rendering in the training on and look what the agent is doing.
-            # action_id = ...
-          
+            action_id = np.random.choice(np.arange(0, self.num_actions), p=[0.5, 0.5])
         return action_id
+
+    def predict_Q_target(self, state):
+        return self.Q_target(torch.Tensor(state).cuda())
+    
+    def predict_Q(self, state):
+        return self.Q(torch.Tensor(state).cuda())
 
     def save(self, file_name):
         torch.save(self.Q.state_dict(), file_name)

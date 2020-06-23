@@ -24,6 +24,7 @@ class BCAgent:
         loss = self.criterion(preds, y_batch)
         self.optimizer.zero_grad()
         loss.backward()
+        self.optimizer.step()
 
         #optimize
         self.optimizer.step()
