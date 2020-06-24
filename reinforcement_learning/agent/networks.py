@@ -25,39 +25,6 @@ class CNN(nn.Module):
     def __init__(self, history_length=0, n_classes=3): 
         super().__init__()
         # TODO : define layers of a convolutional neural network
-        self.conv1 = nn.Conv2d(1+history_length, 32, 8)
-        self.conv2 = nn.Conv2d(32, 64, 5)
-        self.conv3 = nn.Conv2d(64, 16, 3)
-        self.fc1 = nn.Linear(1296, 324)
-        self.fc2 = nn.Linear(324, 64)
-        self.fc3 = nn.Linear(64, n_classes)
-
-    def forward(self, x):
-        # TODO: compute forward pass
-        x = self.conv1(x)
-        x = F.max_pool2d(x, 2, 2)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = F.max_pool2d(x, 2, 2)
-        x = F.relu(x)
-        x = self.conv3(x)
-        x = F.max_pool2d(x, 2, 2)
-        x = F.relu(x)
-        
-        shape = x.shape
-        x = x.view(-1, shape[1] * shape[2] * shape[3])
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, p=0.2)
-        x = F.relu(self.fc2(x))
-        x = F.dropout(x, p=0.2)
-        x = F.relu(self.fc3(x))
-        return F.log_softmax(x, dim=1)
-        
-class CNN2(nn.Module):
-
-    def __init__(self, history_length=0, n_classes=3): 
-        super().__init__()
-        # TODO : define layers of a convolutional neural network
         self.conv1 = nn.Conv2d(1+history_length, 32, 8, stride=4)
         self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
         self.conv3 = nn.Conv2d(64, 64, 3)
@@ -73,7 +40,7 @@ class CNN2(nn.Module):
         x = F.dropout(x, p=0.5)
         x = self.conv3(x)
         x = F.relu(x)
-        
+
         shape = x.shape
         x = x.view(-1, shape[1] * shape[2] * shape[3])
         x = F.relu(self.fc1(x))

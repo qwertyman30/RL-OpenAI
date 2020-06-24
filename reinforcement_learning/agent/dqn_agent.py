@@ -38,6 +38,7 @@ def soft_update(target, source, tau):
   for target_param, param in zip(target.parameters(), source.parameters()):
     target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
+
 class DQNAgent:
 
     def __init__(self, Q, Q_target, num_actions, gamma=0.95, batch_size=64, epsilon=0.1, tau=0.01, lr=1e-4, history_length=0):
@@ -94,7 +95,7 @@ class DQNAgent:
                 td_target[actions[i]] = rewards[i]
             else:
                 td_target_next = self.predict_Q_target(next_states[i])
-                td_target[actions[i]] = reward + self.gamma * torch.max(td_target_next).item()
+                td_target[actions[i]] = rewards[i] + self.gamma * torch.max(td_target_next).item()
 
             td_targets.append(td_target)
 
@@ -120,9 +121,10 @@ class DQNAgent:
         """
         r = np.random.uniform()
         if deterministic or r > self.epsilon:
-            state = torch.Tensor(state).cuda()
-            q_values = self.Q(state)
-            action_id = torch.argmax(q_values).item()
+            with torch.no_grad():
+                state = torch.Tensor(state).cuda()
+                q_values = self.Q(state)
+                action_id = torch.argmax(q_values).item()
         else:
             action_id = np.random.choice(np.arange(0, self.num_actions), p=[0.5, 0.5])
         return action_id
@@ -140,10 +142,10 @@ class DQNAgent:
         self.Q.load_state_dict(torch.load(file_name))
         self.Q_target.load_state_dict(torch.load(file_name))
         
-        
+
 class DQNAgentCar(DQNAgent):
 
-    def __init__(self, Q, Q_target, num_actions, gamma=0.95, batch_size=64, epsilon=0.1, tau=0.01, lr=1e-4, history_length=0):
+    def __init__(self, Q, Q_target, num_actions, gamma=0.95, batch_size=64, epsilon=0.9, tau=0.01, lr=1e-4, history_length=0):
         """
          Q-Learning agent for off-policy TD control using Function Approximation.
          Finds the optimal greedy policy while following an epsilon-greedy policy.
@@ -187,31 +189,27 @@ class DQNAgentCar(DQNAgent):
         
         if replay_size < self.batch_size:
             return
-
+        
+        
         states, actions, next_states, rewards, terminals = self.replay_buffer.next_batch(self.batch_size)
-        td_targets = []
+        states = (torch.from_numpy(states).cuda()).squeeze(1)
+        actions = (torch.from_numpy(actions).long()).cuda()
+        next_states = (torch.from_numpy(next_states).cuda()).squeeze(1)
+        rewards = (torch.from_numpy(rewards)).cuda()
+        not_done_mask = (torch.from_numpy(1 - terminals)).cuda()
 
-        for i in range(self.batch_size):
-            td_target = self.predict_Q(states[i])[0]
-            if terminals[i]:
-                td_target[actions[i]] = rewards[i]
-            else:
-                td_target_next = self.predict_Q_target(next_states[i])
-                td_target[actions[i]] = rewards[i] + self.gamma * torch.max(td_target_next).item()
-
-            td_targets.append(td_target)
-
-        td_targets = [t.detach().cpu().numpy() for t in td_targets]
-        td_targets = np.vstack(td_targets)
-        td_targets = torch.Tensor(td_targets).cuda()
-        states = np.squeeze(states, axis=1)
-        y_preds = self.predict_Q(states)
-        loss = self.loss_function(y_preds, td_targets)
+        current_Q_values = self.Q(states).gather(1, actions.unsqueeze(1)).double()
+        next_max_q = self.Q_target(next_states).detach().max(1)[0]
+        next_Q_values = not_done_mask * next_max_q
+        td_targets = rewards + (self.gamma * next_Q_values)
+        td_targets = td_targets.unsqueeze(1).double()
+        loss = self.loss_function(current_Q_values, td_targets)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        
         soft_update(self.Q_target, self.Q, self.tau)
-
+        
     def act(self, state, deterministic):
         """
         This method creates an epsilon-greedy policy based on the Q-function approximator and epsilon (probability to select a random action)    

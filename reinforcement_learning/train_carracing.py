@@ -11,6 +11,10 @@ from agent.networks import CNN
 import itertools as it
 from utils import EpisodeStats
 
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 200
+
 LEFT = 1
 RIGHT = 2
 STRAIGHT = 0
@@ -25,10 +29,6 @@ def state_preprocessing(state):
     return rgb2gray(state).reshape(96, 96) / 255.0
 
 def id_to_action(action_id, max_speed=0.8):
-    """ 
-    this method makes actions continous.
-    Important: this method only works if you recorded data pressing only one key at a time!
-    """
     a = np.array([0.0, 0.0, 0.0])
 
     if action_id == LEFT:
@@ -42,11 +42,7 @@ def id_to_action(action_id, max_speed=0.8):
     else:
         return np.array([0.0, 0.0, 0.0])
 
-EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 200
-
-def run_episode(env, agent, deterministic, skip_frames=3, do_training=True, rendering=False, max_timesteps=1000, history_length=0):
+def run_episode(env, agent, deterministic, skip_frames=3, do_training=True, rendering=True, max_timesteps=1000, history_length=0):
     """
     This methods runs one episode for a gym environment. 
     deterministic == True => agent executes only greedy actions according the Q function approximator (no random actions).
@@ -116,48 +112,40 @@ def run_episode(env, agent, deterministic, skip_frames=3, do_training=True, rend
     return stats
     
     
-def train_online(env, agent, num_episodes, history_length=0, model_dir="./models_carracing", tensorboard_dir="C:\\Users\\Monish\\Desktop\\workspace\\exercise3_R\\reinforcement_learning\\logs"):
+def train_online(env, agent, num_episodes, history_length=0, model_dir="./models_carracing", tensorboard_dir="./tensorboard"):
    
     if not os.path.exists(model_dir):
-        os.mkdir(model_dir)
+        os.mkdir(model_dir)  
  
     print("... train agent")
-#    tensorboard = Evaluation(os.path.join(tensorboard_dir, "train"), ["episode_reward", "straight", "left", "right", "accel", "brake"])
+    #tensorboard = Evaluation(os.path.join(tensorboard_dir, "train"), ["episode_reward", "straight", "left", "right", "accel", "brake"])
 
     training, validation = [], []
-    max_timesteps = 100
+    max_timesteps = 200
     for i in range(num_episodes):
         print("epsiode %d" % i)
 
         # Hint: you can keep the episodes short in the beginning by changing max_timesteps (otherwise the car will spend most of the time out of the track)
-        stats = run_episode(env, agent, skip_frames=2, history_length=history_length, max_timesteps=max_timesteps, deterministic=False, do_training=True)
+        stats = run_episode(env, agent, skip_frames=3, max_timesteps=max_timesteps, deterministic=False, do_training=True)
         episode_reward = stats.episode_reward
         training.append(episode_reward)
-
-#        tensorboard.write_episode_data(i, eval_dict={ "episode_reward" : stats.episode_reward, 
-#                                                      "straight" : stats.get_action_usage(STRAIGHT),
-#                                                      "left" : stats.get_action_usage(LEFT),
-#                                                      "right" : stats.get_action_usage(RIGHT),
-#                                                      "accel" : stats.get_action_usage(ACCELERATE),
-#                                                      "brake" : stats.get_action_usage(BRAKE)
-#                                                      })
 
         # TODO: evaluate your agent every 'eval_cycle' episodes using run_episode(env, agent, deterministic=True, do_training=False) to 
         # check its performance with greedy actions only. You can also use tensorboard to plot the mean episode reward.
         # ...
         if i % eval_cycle == 0:
             eval_stats = run_episode(env, agent, history_length=history_length, deterministic=True, do_training=False)
-            validation.append(eval_stats.episode_reward)
+            reward = eval_stats.episode_reward
+            validation.append(reward)
 
         #       ...
         # store model.
         if i % eval_cycle == 0 or (i >= num_episodes - 1):
-            agent.save(os.path.join(model_dir, f"dqn_agent_hist.pt"))
+            agent.save(os.path.join(model_dir, f"dqn_agent_1.pt"))
      
-        #plot_res(training, "DQN", goal=800)
         print(f"episode: {i+1}, total reward: {episode_reward}")
 
-        max_timesteps = min(max_timesteps+20, 2000)
+        max_timesteps = min(max_timesteps+20, 1500)
     #tensorboard.close_session()
     return training, validation
 
@@ -167,22 +155,22 @@ if __name__ == "__main__":
     num_actions = 5
 
     env = gym.make('CarRacing-v0').unwrapped
-    Q = CNN(history_length=3, n_classes=5)
-    Q_target = CNN(history_length=3, n_classes=5)
-    agent = DQNAgentCar(Q, Q_target, num_actions, gamma=0.9, batch_size=20, epsilon=0.1, tau=0.01, lr=0.001)
+    Q = CNN(n_classes=5)
+    Q_target = CNN(n_classes=5)
+    agent = DQNAgentCar(Q, Q_target, num_actions, gamma=0.9, batch_size=20, epsilon=0.9, tau=0.01, lr=0.001, history_length=0)
 
-    training, validation = train_online(env, agent, num_episodes=1000, history_length=3, model_dir="./models_carracing")
+    training, validation = train_online(env, agent, num_episodes=420, history_length=0, model_dir="./models_carracing")
     
     plt.plot(training)
-    plt.title("Training Performance")
+    plt.title("Training reward vs episodes")
     plt.xlabel("Episodes")
     plt.ylabel("Reward")
     plt.savefig("Training Performance.png")
     plt.show()
 
     plt.plot(validation)
-    plt.title("Validation Performance")
-    plt.xlabel("Episodes")
+    plt.title("Validation reward vs eval cycles")
+    plt.xlabel("Eval cycles")
     plt.ylabel("Reward")
     plt.savefig("Validation Performance.png")
     plt.show()

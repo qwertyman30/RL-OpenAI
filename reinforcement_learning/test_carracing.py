@@ -19,10 +19,10 @@ if __name__ == "__main__":
 
     #TODO: Define networks and load agent
     # ....
-    Q = CNN2(n_classes=5, history_length=history_length)
-    Q_target = CNN2(n_classes=5, history_length=history_length)
+    Q = CNN(n_classes=5, history_length=history_length)
+    Q_target = CNN(n_classes=5, history_length=history_length)
     agent = DQNAgentCar(Q, Q_target, num_actions=5)
-    agent.load("C:\\Users\\Monish\\Desktop\\workspace\\exercise3_R\\reinforcement_learning\\models_carracing\\dqn_agent_2.pt")
+    agent.load("C:\\Users\\Monish\\Desktop\\workspace\\exercise3_R\\reinforcement_learning\\models_carracing\\dqn_agent_1.pt")
 
     n_test_episodes = 15
 
