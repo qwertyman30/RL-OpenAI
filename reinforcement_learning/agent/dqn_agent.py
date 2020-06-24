@@ -74,6 +74,10 @@ class DQNAgent:
         self.optimizer = torch.optim.Adam(self.Q.parameters(), lr=lr)
 
         self.num_actions = num_actions
+        self.p = [0.5, 0.5]
+        
+    def retStates(self, states):
+        return (torch.from_numpy(states).float().cuda()).squeeze(1)
 
     def train(self, state, action, next_state, reward, terminal):
         """
@@ -87,27 +91,23 @@ class DQNAgent:
             return
 
         states, actions, next_states, rewards, terminals = self.replay_buffer.next_batch(self.batch_size)
-        td_targets = []
+        
+        states = self.retStates(states)
+        actions = (torch.from_numpy(actions).long()).cuda()
+        next_states = self.retStates(next_states)
+        rewards = (torch.from_numpy(rewards)).cuda()
+        not_done_mask = (torch.from_numpy(1 - terminals)).cuda()
 
-        for i in range(self.batch_size):
-            td_target = self.predict_Q(states[i])
-            if terminals[i]:
-                td_target[actions[i]] = rewards[i]
-            else:
-                td_target_next = self.predict_Q_target(next_states[i])
-                td_target[actions[i]] = rewards[i] + self.gamma * torch.max(td_target_next).item()
-
-            td_targets.append(td_target)
-
-        td_targets = [t.detach().cpu().numpy() for t in td_targets]
-        td_targets = np.vstack(td_targets)
-        td_targets = torch.Tensor(td_targets).cuda()
-
-        y_pred = self.predict_Q(states)
-        loss = self.loss_function(y_pred, td_targets)
+        current_Q_values = self.Q(states).gather(1, actions.unsqueeze(1)).double()
+        next_max_q = self.Q_target(next_states).detach().max(1)[0]
+        next_Q_values = not_done_mask * next_max_q
+        td_targets = rewards + (self.gamma * next_Q_values)
+        td_targets = td_targets.unsqueeze(1).double()
+        loss = self.loss_function(current_Q_values, td_targets)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        
         soft_update(self.Q_target, self.Q, self.tau)
 
     def act(self, state, deterministic):
@@ -121,12 +121,11 @@ class DQNAgent:
         """
         r = np.random.uniform()
         if deterministic or r > self.epsilon:
-            with torch.no_grad():
-                state = torch.Tensor(state).cuda()
-                q_values = self.Q(state)
-                action_id = torch.argmax(q_values).item()
+            state = torch.Tensor(state).cuda()
+            q_values = self.Q(state)
+            action_id = torch.argmax(q_values).item()
         else:
-            action_id = np.random.choice(np.arange(0, self.num_actions), p=[0.5, 0.5])
+            action_id = np.random.choice(np.arange(0, self.num_actions), p=self.p)
         return action_id
 
     def predict_Q_target(self, state):
@@ -161,69 +160,9 @@ class DQNAgentCar(DQNAgent):
             lr: learning rate of the optimizer
         """
         # setup networks
-        self.Q = Q.cuda()
-        self.Q_target = Q_target.cuda()
-        self.Q_target.load_state_dict(self.Q.state_dict())
-
-        # define replay buffer
-        self.replay_buffer = ReplayBuffer()
-
-        # parameters
-        self.batch_size = batch_size
-        self.gamma = gamma
-        self.tau = tau
-        self.epsilon = epsilon
-
+        super().__init__(Q, Q_target, num_actions=5, gamma=gamma, batch_size=batch_size, epsilon=epsilon, tau=tau, lr=lr, history_length=history_length)
         self.loss_function = torch.nn.SmoothL1Loss().cuda()
-        self.optimizer = torch.optim.Adam(self.Q.parameters(), lr=lr)
+        self.p = [0.54, 0.17, 0.08, 0.2, 0.01]
 
-        self.num_actions = num_actions
-
-    def train(self, state, action, next_state, reward, terminal):
-        """
-        This method stores a transition to the replay buffer and updates the Q networks.
-        """
-        self.replay_buffer.add_transition(state, action, next_state, reward, terminal)
-
-        replay_size = len(self.replay_buffer._data.states)
-        
-        if replay_size < self.batch_size:
-            return
-        
-        
-        states, actions, next_states, rewards, terminals = self.replay_buffer.next_batch(self.batch_size)
-        states = (torch.from_numpy(states).cuda()).squeeze(1)
-        actions = (torch.from_numpy(actions).long()).cuda()
-        next_states = (torch.from_numpy(next_states).cuda()).squeeze(1)
-        rewards = (torch.from_numpy(rewards)).cuda()
-        not_done_mask = (torch.from_numpy(1 - terminals)).cuda()
-
-        current_Q_values = self.Q(states).gather(1, actions.unsqueeze(1)).double()
-        next_max_q = self.Q_target(next_states).detach().max(1)[0]
-        next_Q_values = not_done_mask * next_max_q
-        td_targets = rewards + (self.gamma * next_Q_values)
-        td_targets = td_targets.unsqueeze(1).double()
-        loss = self.loss_function(current_Q_values, td_targets)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        
-        soft_update(self.Q_target, self.Q, self.tau)
-        
-    def act(self, state, deterministic):
-        """
-        This method creates an epsilon-greedy policy based on the Q-function approximator and epsilon (probability to select a random action)    
-        Args:
-            state: current state input
-            deterministic:  if True, the agent should execute the argmax action (False in training, True in evaluation)
-        Returns:
-            action id
-        """
-        r = np.random.uniform()
-        if deterministic or r > self.epsilon:
-            state = torch.Tensor(state).cuda()
-            q_values = self.Q(state)
-            action_id = torch.argmax(q_values).item()
-        else:
-            action_id = np.random.choice(np.arange(0, self.num_actions), p=[0.54, 0.17, 0.08, 0.2, 0.01])
-        return action_id
+    def retStates(self, states):
+        return (torch.from_numpy(states).cuda()).squeeze(1)
